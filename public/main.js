@@ -28,9 +28,23 @@ const Audio = (() => {
     const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 1400;
     n.connect(f).connect(g).connect(c.destination); n.start(); n.stop(c.currentTime + dur);
   }
+  let engOsc = null, engGain = null;
+  function engineStart() {
+    const c = ensure(); if (!c || engOsc) return;
+    engOsc = c.createOscillator(); engGain = c.createGain();
+    engOsc.type = 'sawtooth'; engOsc.frequency.value = 60; engGain.gain.value = 0;
+    const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 600;
+    engOsc.connect(f).connect(engGain).connect(c.destination); engOsc.start();
+  }
+  function engineSet(speedNorm, boosting) {
+    if (!engGain || !ctx) return;
+    engOsc.frequency.setTargetAtTime(48 + speedNorm * 70 + (boosting ? 40 : 0), ctx.currentTime, 0.1);
+    engGain.gain.setTargetAtTime(muted ? 0 : 0.018 + (boosting ? 0.02 : 0), ctx.currentTime, 0.1);
+  }
   return {
     resume: () => { const c = ensure(); if (c && c.state === 'suspended') c.resume(); },
-    toggleMute: () => { muted = !muted; return muted; },
+    toggleMute: () => { muted = !muted; if (engGain && ctx) engGain.gain.setTargetAtTime(muted ? 0 : 0.018, ctx.currentTime, 0.05); return muted; },
+    engineStart, engineSet,
     laser:   () => tone(900, 0.10, 'square', 0.05, 240),
     missile: () => tone(200, 0.45, 'sawtooth', 0.07, 80),
     boom:    () => { noise(0.5, 0.22); tone(110, 0.5, 'sawtooth', 0.09, 38); },
@@ -171,6 +185,7 @@ const player = {
   speed: 260, hp: 100, kills: 0, targets: 0, missiles: 8,
   alive: true, cooldown: 0, mslCd: 0, invuln: 0, hpDirty: false, alarmT: 0, hurtT: 0,
   boost: 100, boosting: false, trailT: 0, lastHitAt: -9999,
+  score: 0, bombs: 3, bombT: 0, spreadT: 0,
 };
 const ship = makeShip(0x33ddff);
 scene.add(ship);
@@ -220,6 +235,7 @@ addEventListener('keydown', e => {
   keys[e.code] = true;
   if (e.code === 'Space') e.preventDefault();
   if (e.code === 'KeyF') tryFireMissile();
+  if (e.code === 'KeyQ') smartBomb();
   if (e.code === 'KeyC') camMode = camMode ? 0 : 1;
   if (e.code === 'KeyM') feed(Audio.toggleMute() ? 'AUDIO MUTED' : 'AUDIO ON');
   if (e.code === 'Tab') { e.preventDefault(); showScore(true); }
@@ -289,6 +305,7 @@ if (isTouch) {
   };
   hold('btn-fire',  () => { firing = true; },  () => { firing = false; });
   hold('btn-msl',   () => { tryFireMissile(); });
+  hold('btn-bomb',  () => { smartBomb(); });
   hold('btn-boost', () => { touchBoost = true; }, () => { touchBoost = false; });
   hold('btn-thrup', () => { touchThrottle = 1; },  () => { touchThrottle = 0; });
   hold('btn-thrdn', () => { touchThrottle = -1; }, () => { touchThrottle = 0; });
@@ -440,7 +457,7 @@ function handle(m) {
       if (m.hp <= 0) {
         scores.set(m.by, (scores.get(m.by) || 0) + 1);
         const who = remotes.get(m.id);
-        if (m.by === myId) { player.kills = scores.get(myId); document.getElementById('kills').textContent = `KILLS: ${player.kills}`; feed(`YOU destroyed ${who ? who.name : 'a pilot'}`); }
+        if (m.by === myId) { player.kills = scores.get(myId); document.getElementById('kills').textContent = `KILLS: ${player.kills}`; addScore(100); feed(`YOU destroyed ${who ? who.name : 'a pilot'}`); }
         else feed(`${who ? who.name : 'A pilot'} was destroyed`);
       }
       break;
@@ -482,9 +499,11 @@ function respawn() {
   player.pos.set((Math.random() - 0.5) * 2000, 600, (Math.random() - 0.5) * 2000);
   player.quat.identity();
   player.speed = 260; player.hp = 100; player.missiles = 8;
+  player.bombs = 3; player.spreadT = 0; player.boost = 100;
   player.alive = true; player.invuln = 2.5; firing = false;
   ship.visible = true;
   document.getElementById('ammo').textContent = 'MSL: 8';
+  bombsEl.textContent = 'BOMB: 3';
   send({ type: 'hp', hp: 100, by: 0 });
 }
 
@@ -495,8 +514,28 @@ function fireCannon() {
   const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quat);
   const muzzle = player.pos.clone().addScaledVector(fwd, 30);
   spawnShot(muzzle, fwd, 0x33ddff, { mine: true, dmg: 12, speed: 2600, life: 1.6, kind: 'pac' });
+  if (player.spreadT > 0) {
+    const up = new THREE.Vector3(0, 1, 0).applyQuaternion(player.quat);
+    for (const sgn of [-1, 1]) {
+      const d = fwd.clone().applyAxisAngle(up, sgn * 0.09).normalize();
+      spawnShot(muzzle, d, 0x66ffcc, { mine: true, dmg: 12, speed: 2600, life: 1.6, kind: 'pac' });
+    }
+  }
   send({ type: 'shot', o: [muzzle.x, muzzle.y, muzzle.z], d: [fwd.x, fwd.y, fwd.z], k: 'pac' });
   Audio.laser();
+}
+
+function smartBomb() {
+  if (!started || !player.alive || player.bombs <= 0 || player.bombT > 0) return;
+  player.bombs--; player.bombT = 0.8;
+  bombsEl.textContent = 'BOMB: ' + player.bombs;
+  spawnExplosion(player.pos, 0x66ccff); spawnExplosion(player.pos, 0xffffff);
+  Audio.boom();
+  const R = 1300;
+  for (const t of turrets) if (t.alive && t.pos.distanceTo(player.pos) < R) { t.alive = false; t.respawn = 8; t.core.visible = false; spawnExplosion(t.pos, 0xff5533); addTarget(); }
+  for (const e of enemies) if (e.alive && e.pos.distanceTo(player.pos) < R) { e.alive = false; e.respawn = 6; e.ship.visible = false; spawnExplosion(e.pos, 0xff5533); addTarget(); }
+  for (const [id, r] of remotes) if (!r.dead && r.hp > 0 && r.ship.position.distanceTo(player.pos) < R) { send({ type: 'hit', target: id, dmg: 45 }); spawnExplosion(r.ship.position, r.color); }
+  hitMark = 1;
 }
 function nearestTarget(from, dir) {
   let best = null, bestScore = Infinity;
@@ -531,8 +570,8 @@ function tryFireMissile() {
 // ----------------------------------------------------------------------------
 const pickups = [];
 function spawnPickup(kind) {
-  const color = kind === 'shield' ? 0x66ff88 : 0xff9944;
-  const geo = kind === 'shield' ? new THREE.OctahedronGeometry(16) : new THREE.BoxGeometry(22, 22, 22);
+  const color = kind === 'shield' ? 0x66ff88 : kind === 'ammo' ? 0xff9944 : 0xcc66ff;
+  const geo = kind === 'shield' ? new THREE.OctahedronGeometry(16) : kind === 'ammo' ? new THREE.BoxGeometry(22, 22, 22) : new THREE.TetrahedronGeometry(18);
   const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.5, flatShading: true }));
   scene.add(mesh);
   const p = { mesh, kind };
@@ -542,7 +581,8 @@ function relocatePickup(p) {
   const x = (Math.random() - 0.5) * WORLD * 0.7, z = (Math.random() - 0.5) * WORLD * 0.7;
   p.mesh.position.set(x, terrainHeight(x, z) + 130 + Math.random() * 220, z);
 }
-for (let i = 0; i < 8; i++) spawnPickup(i % 2 ? 'ammo' : 'shield');
+const PICKUP_KINDS = ['shield', 'ammo', 'weapon'];
+for (let i = 0; i < 9; i++) spawnPickup(PICKUP_KINDS[i % 3]);
 
 // ----------------------------------------------------------------------------
 // Launch / overlay / scoreboard
@@ -566,6 +606,7 @@ document.getElementById('launch').addEventListener('click', () => {
   started = true;
   player.invuln = 2.5;
   Audio.resume();
+  Audio.engineStart();
   if (!isTouch) renderer.domElement.requestPointerLock();
 });
 
@@ -582,7 +623,15 @@ const targetsEl = document.getElementById('targets');
 const boostBar = document.getElementById('boost-bar');
 const hurtEl = document.getElementById('hurt');
 const lockEl = document.getElementById('lock');
-function addTarget() { player.targets++; targetsEl.textContent = 'TARGETS: ' + player.targets; }
+const bombsEl = document.getElementById('bombs');
+const scoreEl = document.getElementById('score');
+const hitmarkEl = document.getElementById('hitmark');
+let hitMark = 0;
+
+const RANKS = [[0, 'RECRUIT'], [200, 'PILOT'], [500, 'ACE'], [1000, 'VETERAN'], [2000, 'VANGUARD'], [4000, 'LEGEND']];
+function rankFor(s) { let r = RANKS[0][1]; for (const [t, n] of RANKS) if (s >= t) r = n; return r; }
+function addScore(n) { player.score += n; scoreEl.textContent = `${rankFor(player.score)} · ${player.score}`; }
+function addTarget() { player.targets++; targetsEl.textContent = 'TARGETS: ' + player.targets; addScore(25); }
 
 function drawRadar() {
   const cx = 70, cy = 70, R = 64, range = 3000;
@@ -602,7 +651,7 @@ function drawRadar() {
   };
   for (const t of turrets) if (t.alive) plot(t.pos.x, t.pos.z, '#ff3344', 2);
   for (const e of enemies) if (e.alive) plot(e.pos.x, e.pos.z, '#ff7733', 2);
-  for (const p of pickups) plot(p.mesh.position.x, p.mesh.position.z, p.kind === 'shield' ? '#66ff88' : '#ff9944', 2);
+  for (const p of pickups) plot(p.mesh.position.x, p.mesh.position.z, p.kind === 'shield' ? '#66ff88' : p.kind === 'ammo' ? '#ff9944' : '#cc66ff', 2);
   for (const r of remotes.values()) if (!r.dead) plot(r.ship.position.x, r.ship.position.z, '#' + r.color.toString(16).padStart(6, '0'), 3);
   radar.fillStyle = '#7df9ff';
   radar.beginPath(); radar.moveTo(cx, cy - 5); radar.lineTo(cx - 4, cy + 4); radar.lineTo(cx + 4, cy + 4); radar.fill();
@@ -630,6 +679,8 @@ function tick(now) {
   updateLock();
   hurtFlash = Math.max(0, hurtFlash - dt * 2);
   hurtEl.style.opacity = hurtFlash.toFixed(3);
+  hitMark = Math.max(0, hitMark - dt * 3);
+  hitmarkEl.style.opacity = hitMark.toFixed(3);
 
   netAccum += dt;
   if (started && netAccum >= 0.05) {
@@ -658,6 +709,8 @@ requestAnimationFrame(tick);
 function updateFlight(dt) {
   player.invuln = Math.max(0, player.invuln - dt);
   player.hurtT = Math.max(0, player.hurtT - dt);
+  player.bombT = Math.max(0, player.bombT - dt);
+  player.spreadT = Math.max(0, player.spreadT - dt);
   player.cooldown -= dt; player.mslCd -= dt;
 
   const boosting = isBoosting() && player.boost > 1;
@@ -736,6 +789,13 @@ function updateFlight(dt) {
   tmpQ.copy(player.quat);
   camera.quaternion.slerp(tmpQ, Math.min(dt * 6, 1));
 
+  // Speed-driven FOV kick + engine drone
+  const sNorm = THREE.MathUtils.clamp((player.speed - 150) / 610, 0, 1);
+  const tFov = 70 + sNorm * 16 + (boosting ? 4 : 0);
+  camera.fov += (tFov - camera.fov) * Math.min(dt * 4, 1);
+  camera.updateProjectionMatrix();
+  Audio.engineSet(sNorm, boosting);
+
   // Cannon (disabled during afterburner — as in the original)
   if (firing && !boosting && player.cooldown <= 0) { player.cooldown = 0.12; fireCannon(); }
 }
@@ -772,6 +832,11 @@ function updateEnemies(dt) {
     if (started && player.alive) {
       const to = player.pos.clone().sub(e.pos);
       const dist = to.length() || 1;
+      if (player.invuln <= 0 && dist < 40) { // ramming
+        applyDamage(25, 0);
+        e.alive = false; e.respawn = 6; e.ship.visible = false; spawnExplosion(e.pos, 0xff5533);
+        continue;
+      }
       const desired = to.clone().multiplyScalar(1 / dist);
       if (e.pos.y < ground + 140) desired.y += 0.8;   // climb away from terrain
       if (dist < 350) desired.multiplyScalar(-1);      // peel off if too close
@@ -825,7 +890,8 @@ function updatePickups(dt) {
     p.mesh.rotation.y += dt * 1.5; p.mesh.rotation.x += dt * 0.7;
     if (started && player.alive && p.mesh.position.distanceTo(player.pos) < 42) {
       if (p.kind === 'shield') { player.hp = Math.min(100, player.hp + 35); player.hpDirty = true; feed('+SHIELD'); }
-      else { player.missiles = Math.min(12, player.missiles + 4); document.getElementById('ammo').textContent = 'MSL: ' + player.missiles; feed('+MISSILES'); }
+      else if (p.kind === 'ammo') { player.missiles = Math.min(12, player.missiles + 4); document.getElementById('ammo').textContent = 'MSL: ' + player.missiles; feed('+MISSILES'); }
+      else { player.spreadT = 12; player.bombs = Math.min(5, player.bombs + 1); bombsEl.textContent = 'BOMB: ' + player.bombs; feed('+SPREAD CANNON / +BOMB'); }
       Audio.pickup();
       relocatePickup(p);
     }
@@ -855,13 +921,13 @@ function updateShots(dt) {
         if (r.hp <= 0 || r.dead) continue;
         if (distToSegment(r.ship.position, s.prev, s.mesh.position) < 30) {
           send({ type: 'hit', target: id, dmg: s.dmg });
-          spawnExplosion(s.mesh.position, r.color); dead = true; break;
+          spawnExplosion(s.mesh.position, r.color); hitMark = 1; dead = true; break;
         }
       }
       if (!dead) for (const t of turrets) {
         if (!t.alive) continue;
         if (distToSegment(t.pos, s.prev, s.mesh.position) < 26) {
-          t.hp -= s.dmg; spawnSpark(s.mesh.position, 0xff3344);
+          t.hp -= s.dmg; spawnSpark(s.mesh.position, 0xff3344); hitMark = 1;
           if (t.hp <= 0) { t.alive = false; t.respawn = 8; t.core.visible = false; spawnExplosion(t.pos, 0xff5533); addTarget(); }
           dead = true; break;
         }
@@ -869,7 +935,7 @@ function updateShots(dt) {
       if (!dead) for (const e of enemies) {
         if (!e.alive) continue;
         if (distToSegment(e.pos, s.prev, s.mesh.position) < 24) {
-          e.hp -= s.dmg; spawnSpark(s.mesh.position, 0xff5533);
+          e.hp -= s.dmg; spawnSpark(s.mesh.position, 0xff5533); hitMark = 1;
           if (e.hp <= 0) { e.alive = false; e.respawn = 6; e.ship.visible = false; spawnExplosion(e.pos, 0xff5533); addTarget(); }
           dead = true; break;
         }

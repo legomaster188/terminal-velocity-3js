@@ -29,6 +29,7 @@ separate pilot. The server relays everyone's position and combat in real time.
 | Shift | Afterburner (very fast, but **weapons go offline** — as in the original) |
 | Left-click / Space | Plasma cannon |
 | Right-click / F | Homing missile (limited ammo) |
+| Q | Smart bomb (clears nearby enemies / damages nearby pilots) |
 | C | Toggle chase / cockpit camera |
 | M | Mute / unmute audio |
 | Tab | Pilot roster / scoreboard |
@@ -49,6 +50,11 @@ On touch devices a virtual joystick + FIRE / MSL / THR / BOOST buttons appear au
 - **Shield slowly regenerates** when you stay out of fire for a few seconds.
 - **Floating nameplates** (with shield bars) hover over other online pilots.
 - Damage flash, engine trails, and a cockpit/chase camera toggle (C); mute with M.
+
+- **Smart bombs** (Q) detonate an area blast — clears nearby turrets/fighters and damages nearby pilots.
+- **Spread-cannon pickup** (purple) temporarily gives a triple-shot cannon and a spare bomb.
+- **Score + rank** progression (RECRUIT → LEGEND), shown in the HUD.
+- **Speed FOV kick**, hit markers, enemy ramming, and a throttle-pitched engine drone.
 
 Enemy fighters, turrets, and pickups are simulated **per-client** (each pilot gets their own
 PvE hazards), layered underneath the shared real-time PvP.

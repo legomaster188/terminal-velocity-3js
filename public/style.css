@@ -24,8 +24,11 @@ canvas#scene { display: block; }
 .bar i.shield { background: #66ff88; box-shadow: 0 0 8px #66ff88; }
 .bar i.boost { background: #ffcc33; box-shadow: 0 0 8px #ffcc33; }
 #ammo { color: #ff9944; }
+#bombs { color: #ff66cc; }
 #targets { color: #cc88ff; }
 #kills { margin-left: auto; color: #ffcc33; }
+#score { color: #7df9ff; }
+#hitmark { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 24px; color: #fff; opacity: 0; pointer-events: none; }
 
 #scoreboard {
   position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 9;
@@ -94,6 +97,7 @@ canvas#scene { display: block; }
 }
 #btn-fire { width: 96px; height: 96px; border-radius: 50%; background: #ff5577; box-shadow: 0 0 16px #ff5577; font-size: 18px; }
 #btn-msl { background: #ff9944; box-shadow: 0 0 12px #ff9944; }
+#btn-bomb { background: #ff66cc; box-shadow: 0 0 12px #ff66cc; }
 #btn-boost { background: #ffcc33; box-shadow: 0 0 12px #ffcc33; }
 #btn-thrup, #btn-thrdn { background: #33ddff; box-shadow: 0 0 10px #33ddff; }
 #touch button:active { filter: brightness(1.4); }

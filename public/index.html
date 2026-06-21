@@ -28,11 +28,14 @@
       <div class="gauge"><span class="label">SPEED</span><div class="bar"><i id="speed-bar"></i></div></div>
       <div class="gauge"><span class="label">BOOST</span><div class="bar"><i id="boost-bar" class="boost"></i></div></div>
       <div id="ammo">MSL: 8</div>
+      <div id="bombs">BOMB: 3</div>
       <div id="targets">TARGETS: 0</div>
       <div id="kills">KILLS: 0</div>
+      <div id="score">RECRUIT · 0</div>
     </div>
     <canvas id="radar" width="140" height="140"></canvas>
     <div id="lock"></div>
+    <div id="hitmark">✕</div>
   </div>
   <div id="hurt"></div>
   <div id="labels"></div>
@@ -47,7 +50,7 @@
     <div class="controls">
       <b>CONTROLS</b><br/>
       MOUSE — steer &nbsp;·&nbsp; W / S — throttle &nbsp;·&nbsp; A / D — roll<br/>
-      LEFT-CLICK / SPACE — cannon &nbsp;·&nbsp; RIGHT-CLICK / F — missile<br/>
+      LEFT-CLICK / SPACE — cannon &nbsp;·&nbsp; RIGHT-CLICK / F — missile &nbsp;·&nbsp; Q — smart bomb<br/>
       SHIFT — afterburner (no weapons) &nbsp;·&nbsp; C — camera &nbsp;·&nbsp; M — mute<br/>
       TAB — roster &nbsp;·&nbsp; ESC — release mouse
     </div>
@@ -64,9 +67,10 @@
         <button id="btn-thrdn">THR&nbsp;▼</button>
       </div>
       <div class="thr">
+        <button id="btn-bomb">BOMB</button>
         <button id="btn-msl">MSL</button>
-        <button id="btn-fire">FIRE</button>
       </div>
+      <button id="btn-fire">FIRE</button>
     </div>
   </div>
 
