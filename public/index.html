@@ -26,12 +26,16 @@
     <div id="hud-bottom">
       <div class="gauge"><span class="label">SHIELD</span><div class="bar"><i id="shield-bar" class="shield"></i></div></div>
       <div class="gauge"><span class="label">SPEED</span><div class="bar"><i id="speed-bar"></i></div></div>
+      <div class="gauge"><span class="label">BOOST</span><div class="bar"><i id="boost-bar" class="boost"></i></div></div>
       <div id="ammo">MSL: 8</div>
       <div id="targets">TARGETS: 0</div>
       <div id="kills">KILLS: 0</div>
     </div>
     <canvas id="radar" width="140" height="140"></canvas>
+    <div id="lock"></div>
   </div>
+  <div id="hurt"></div>
+  <div id="labels"></div>
 
   <div id="scoreboard" class="hidden"><h2>PILOT ROSTER</h2><table id="score-table"></table></div>
 
@@ -44,7 +48,8 @@
       <b>CONTROLS</b><br/>
       MOUSE — steer &nbsp;·&nbsp; W / S — throttle &nbsp;·&nbsp; A / D — roll<br/>
       LEFT-CLICK / SPACE — cannon &nbsp;·&nbsp; RIGHT-CLICK / F — missile<br/>
-      SHIFT — afterburner (no weapons) &nbsp;·&nbsp; TAB — roster &nbsp;·&nbsp; ESC — release mouse
+      SHIFT — afterburner (no weapons) &nbsp;·&nbsp; C — camera &nbsp;·&nbsp; M — mute<br/>
+      TAB — roster &nbsp;·&nbsp; ESC — release mouse
     </div>
   </div>
 

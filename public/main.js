@@ -5,9 +5,10 @@ import * as THREE from 'three';
 // Audio (lightweight WebAudio synth — created on first user gesture)
 // ----------------------------------------------------------------------------
 const Audio = (() => {
-  let ctx = null;
+  let ctx = null, muted = false;
   const ensure = () => { if (!ctx) { try { ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch {} } return ctx; };
   function tone(freq, dur, type, gain, slideTo) {
+    if (muted) return;
     const c = ensure(); if (!c) return;
     const o = c.createOscillator(), g = c.createGain();
     o.type = type; o.frequency.setValueAtTime(freq, c.currentTime);
@@ -17,6 +18,7 @@ const Audio = (() => {
     o.connect(g).connect(c.destination); o.start(); o.stop(c.currentTime + dur);
   }
   function noise(dur, gain) {
+    if (muted) return;
     const c = ensure(); if (!c) return;
     const buf = c.createBuffer(1, Math.max(1, c.sampleRate * dur), c.sampleRate);
     const d = buf.getChannelData(0);
@@ -28,6 +30,7 @@ const Audio = (() => {
   }
   return {
     resume: () => { const c = ensure(); if (c && c.state === 'suspended') c.resume(); },
+    toggleMute: () => { muted = !muted; return muted; },
     laser:   () => tone(900, 0.10, 'square', 0.05, 240),
     missile: () => tone(200, 0.45, 'sawtooth', 0.07, 80),
     boom:    () => { noise(0.5, 0.22); tone(110, 0.5, 'sawtooth', 0.09, 38); },
@@ -167,12 +170,44 @@ const player = {
   quat: new THREE.Quaternion(),
   speed: 260, hp: 100, kills: 0, targets: 0, missiles: 8,
   alive: true, cooldown: 0, mslCd: 0, invuln: 0, hpDirty: false, alarmT: 0, hurtT: 0,
+  boost: 100, boosting: false, trailT: 0, lastHitAt: -9999,
 };
 const ship = makeShip(0x33ddff);
 scene.add(ship);
 let myName = 'PILOT';
+let camMode = 0;     // 0 = chase, 1 = cockpit
+let hurtFlash = 0;   // damage vignette intensity
+
+// ----------------------------------------------------------------------------
+// Enemy AI fighters (client-local hazards, like turrets)
+// ----------------------------------------------------------------------------
+const enemies = [];
+function makeEnemy() {
+  const g = new THREE.Group();
+  const mat = new THREE.MeshStandardMaterial({ color: 0xff5533, flatShading: true, metalness: 0.3, roughness: 0.5 });
+  const body = new THREE.Mesh(new THREE.OctahedronGeometry(13), mat);
+  body.scale.set(1, 0.5, 1.6); g.add(body);
+  const wing = new THREE.Mesh(new THREE.BoxGeometry(40, 2, 10), new THREE.MeshStandardMaterial({ color: 0x551111, flatShading: true }));
+  g.add(wing);
+  const eye = new THREE.Mesh(new THREE.SphereGeometry(4, 8, 8), new THREE.MeshBasicMaterial({ color: 0xffdd33 }));
+  eye.position.z = -14; g.add(eye);
+  return g;
+}
+function spawnEnemy(e) {
+  const x = (Math.random() - 0.5) * WORLD * 0.7, z = (Math.random() - 0.5) * WORLD * 0.7;
+  e.pos.set(x, terrainHeight(x, z) + 400 + Math.random() * 400, z);
+  e.dir.set(Math.random() - 0.5, 0, Math.random() - 0.5).normalize();
+  e.hp = 24; e.alive = true; e.cd = 1 + Math.random() * 2; e.ship.visible = true;
+}
+for (let i = 0; i < 5; i++) {
+  const eship = makeEnemy();
+  scene.add(eship);
+  const e = { ship: eship, pos: new THREE.Vector3(), dir: new THREE.Vector3(0, 0, -1), hp: 24, cd: 2, alive: true, respawn: 0, speed: 300 };
+  spawnEnemy(e); enemies.push(e);
+}
 
 const camOffset = new THREE.Vector3(0, 22, 90);
+const camCockpit = new THREE.Vector3(0, 7, -8);
 const tmpV = new THREE.Vector3();
 const tmpQ = new THREE.Quaternion();
 let tNow = performance.now();
@@ -185,6 +220,8 @@ addEventListener('keydown', e => {
   keys[e.code] = true;
   if (e.code === 'Space') e.preventDefault();
   if (e.code === 'KeyF') tryFireMissile();
+  if (e.code === 'KeyC') camMode = camMode ? 0 : 1;
+  if (e.code === 'KeyM') feed(Audio.toggleMute() ? 'AUDIO MUTED' : 'AUDIO ON');
   if (e.code === 'Tab') { e.preventDefault(); showScore(true); }
 });
 addEventListener('keyup', e => {
@@ -270,6 +307,7 @@ const laserGeo = new THREE.CylinderGeometry(1.2, 1.2, 40, 6).rotateX(Math.PI / 2
 const missileGeo = new THREE.ConeGeometry(2.6, 22, 6).rotateX(Math.PI / 2);
 const sparkGeo = new THREE.SphereGeometry(3, 6, 6);
 const fwdZ = new THREE.Vector3(0, 0, 1);
+const negZ = new THREE.Vector3(0, 0, -1);
 
 function orientAlong(mesh, dir) { mesh.quaternion.setFromUnitVectors(fwdZ, dir); }
 
@@ -290,6 +328,11 @@ function spawnSpark(pos, colorHex) {
   const m = new THREE.Mesh(sparkGeo, new THREE.MeshBasicMaterial({ color: colorHex, transparent: true }));
   m.position.copy(pos); m.scale.setScalar(1.6);
   scene.add(m); sparks.push({ mesh: m, life: 0.4, max: 0.4 });
+}
+function spawnTrail(pos, colorHex) {
+  const m = new THREE.Mesh(sparkGeo, new THREE.MeshBasicMaterial({ color: colorHex, transparent: true }));
+  m.position.copy(pos); m.scale.setScalar(1.1);
+  scene.add(m); sparks.push({ mesh: m, life: 0.35, max: 0.35, vel: new THREE.Vector3() }); // zero vel = fade in place
 }
 function spawnExplosion(pos, colorHex) {
   Audio.boom();
@@ -322,6 +365,17 @@ let lastDamageBy = 0;
 const statusEl = document.getElementById('status');
 const playersEl = document.getElementById('players');
 const killfeed = document.getElementById('killfeed');
+const labelsEl = document.getElementById('labels');
+
+function makeLabel(name, colorHex) {
+  const d = document.createElement('div');
+  d.className = 'nameplate';
+  d.style.color = '#' + colorHex.toString(16).padStart(6, '0');
+  d.innerHTML = '<span class="nm"></span><span class="hpb"><i></i></span>';
+  d.querySelector('.nm').textContent = name;
+  labelsEl.appendChild(d);
+  return d;
+}
 
 const proto = location.protocol === 'https:' ? 'wss' : 'ws';
 let ws;
@@ -340,6 +394,7 @@ function addRemote(info) {
   remotes.set(info.id, {
     ship: s, name: info.name, color: info.color, hp: info.hp ?? 100, dead: false,
     target: { pos: new THREE.Vector3(), quat: new THREE.Quaternion() }, hasState: false,
+    label: makeLabel(info.name, info.color),
   });
   updatePlayerCount();
 }
@@ -357,7 +412,7 @@ function handle(m) {
       break;
     case 'leave': {
       const r = remotes.get(m.id);
-      if (r) { scene.remove(r.ship); remotes.delete(m.id); updatePlayerCount(); }
+      if (r) { scene.remove(r.ship); r.label.remove(); remotes.delete(m.id); updatePlayerCount(); }
       break;
     }
     case 'state': {
@@ -391,7 +446,7 @@ function handle(m) {
       break;
     }
     case 'name': {
-      const r = remotes.get(m.id); if (r) r.name = m.name; break;
+      const r = remotes.get(m.id); if (r) { r.name = m.name; r.label.querySelector('.nm').textContent = m.name; } break;
     }
   }
 }
@@ -408,6 +463,8 @@ function applyDamage(dmg, from) {
   if (!player.alive || player.invuln > 0) return;
   player.hp -= dmg;
   lastDamageBy = from;
+  player.lastHitAt = tNow;
+  hurtFlash = Math.min(1, hurtFlash + 0.5);
   if (player.hurtT <= 0) { spawnSpark(player.pos, 0xff5577); Audio.alarm(); player.hurtT = 0.15; } // throttle continuous-graze feedback
   if (player.hp <= 0) {
     player.hp = 0; player.alive = false;
@@ -454,10 +511,11 @@ function nearestTarget(from, dir) {
   };
   for (const r of remotes.values()) consider(r, r.ship.position, r.hp > 0 && !r.dead);
   for (const t of turrets) consider(t, t.pos, t.alive);
+  for (const e of enemies) consider(e, e.pos, e.alive);
   return best;
 }
 function tryFireMissile() {
-  if (!started || !player.alive || isBoosting() || player.missiles <= 0 || player.mslCd > 0) return;
+  if (!started || !player.alive || player.boosting || player.missiles <= 0 || player.mslCd > 0) return;
   player.mslCd = 0.6; player.missiles--;
   document.getElementById('ammo').textContent = 'MSL: ' + player.missiles;
   const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quat);
@@ -521,6 +579,10 @@ const altEl = document.getElementById('alt');
 const warnEl = document.getElementById('warn');
 const boostmsgEl = document.getElementById('boostmsg');
 const targetsEl = document.getElementById('targets');
+const boostBar = document.getElementById('boost-bar');
+const hurtEl = document.getElementById('hurt');
+const lockEl = document.getElementById('lock');
+function addTarget() { player.targets++; targetsEl.textContent = 'TARGETS: ' + player.targets; }
 
 function drawRadar() {
   const cx = 70, cy = 70, R = 64, range = 3000;
@@ -539,6 +601,7 @@ function drawRadar() {
     radar.fillStyle = color; radar.beginPath(); radar.arc(cx + rx, cy + rz, size, 0, 7); radar.fill();
   };
   for (const t of turrets) if (t.alive) plot(t.pos.x, t.pos.z, '#ff3344', 2);
+  for (const e of enemies) if (e.alive) plot(e.pos.x, e.pos.z, '#ff7733', 2);
   for (const p of pickups) plot(p.mesh.position.x, p.mesh.position.z, p.kind === 'shield' ? '#66ff88' : '#ff9944', 2);
   for (const r of remotes.values()) if (!r.dead) plot(r.ship.position.x, r.ship.position.z, '#' + r.color.toString(16).padStart(6, '0'), 3);
   radar.fillStyle = '#7df9ff';
@@ -559,9 +622,14 @@ function tick(now) {
   if (started && player.alive) updateFlight(dt);
   updateRemotes(dt);
   updateTurrets(dt);
+  updateEnemies(dt);
   updatePickups(dt);
   updateShots(dt);
   updateSparks(dt);
+  updateLabels();
+  updateLock();
+  hurtFlash = Math.max(0, hurtFlash - dt * 2);
+  hurtEl.style.opacity = hurtFlash.toFixed(3);
 
   netAccum += dt;
   if (started && netAccum >= 0.05) {
@@ -579,6 +647,7 @@ function tick(now) {
   speedBar.style.width = `${THREE.MathUtils.clamp((player.speed - 120) / 580 * 100, 0, 100)}%`;
   shieldBar.style.width = `${player.hp}%`;
   shieldBar.style.background = player.hp < 25 ? '#ff5577' : '#66ff88';
+  boostBar.style.width = `${player.boost}%`;
   drawRadar();
 
   renderer.render(scene, camera);
@@ -591,11 +660,13 @@ function updateFlight(dt) {
   player.hurtT = Math.max(0, player.hurtT - dt);
   player.cooldown -= dt; player.mslCd -= dt;
 
-  const boost = isBoosting();
+  const boosting = isBoosting() && player.boost > 1;
+  player.boosting = boosting;
+  player.boost = boosting ? Math.max(0, player.boost - dt * 30) : Math.min(100, player.boost + dt * 18);
   let target = 260;
   if (keys['KeyW'] || keys['ArrowUp'] || touchThrottle > 0) target = 480;
   if (keys['KeyS'] || keys['ArrowDown'] || touchThrottle < 0) target = 150;
-  if (boost) target = 700;
+  if (boosting) target = 760;
   player.speed += (target - player.speed) * Math.min(dt * 2, 1);
 
   if (touchSteer) { yawInput = touchVec.x; pitchInput = touchVec.y; }
@@ -641,22 +712,32 @@ function updateFlight(dt) {
     player.alarmT -= dt;
     if (player.alarmT <= 0) { Audio.alarm(); player.alarmT = 0.35; }
   } else warnEl.classList.remove('on');
-  boostmsgEl.classList.toggle('on', boost);
+  boostmsgEl.classList.toggle('on', boosting);
+
+  // Slow shield regen when out of combat
+  if (player.hp < 100 && tNow - player.lastHitAt > 4000) { player.hp = Math.min(100, player.hp + 6 * dt); player.hpDirty = true; }
+
+  // Engine trail
+  player.trailT -= dt;
+  if (player.trailT <= 0) {
+    player.trailT = 0.03;
+    spawnTrail(new THREE.Vector3(0, 0, 18).applyQuaternion(player.quat).add(player.pos), boosting ? 0xffcc33 : 0x66ccff);
+  }
 
   // Ship mesh + invuln blink
   ship.position.copy(player.pos);
   ship.quaternion.copy(player.quat);
-  ship.visible = player.invuln > 0 ? (Math.floor(tNow / 100) % 2 === 0) : true;
-  ship.userData.glow.scale.setScalar(0.6 + (player.speed / 700) + (boost ? 0.6 : 0));
+  ship.visible = camMode === 1 ? false : (player.invuln > 0 ? (Math.floor(tNow / 100) % 2 === 0) : true);
+  ship.userData.glow.scale.setScalar(0.6 + (player.speed / 700) + (boosting ? 0.6 : 0));
 
-  // Chase camera
-  tmpV.copy(camOffset).applyQuaternion(player.quat).add(player.pos);
-  camera.position.lerp(tmpV, Math.min(dt * 6, 1));
+  // Camera (chase or cockpit)
+  tmpV.copy(camMode === 1 ? camCockpit : camOffset).applyQuaternion(player.quat).add(player.pos);
+  camera.position.lerp(tmpV, Math.min(dt * (camMode === 1 ? 12 : 6), 1));
   tmpQ.copy(player.quat);
   camera.quaternion.slerp(tmpQ, Math.min(dt * 6, 1));
 
   // Cannon (disabled during afterburner — as in the original)
-  if (firing && !boost && player.cooldown <= 0) { player.cooldown = 0.12; fireCannon(); }
+  if (firing && !boosting && player.cooldown <= 0) { player.cooldown = 0.12; fireCannon(); }
 }
 
 function updateRemotes(dt) {
@@ -682,6 +763,61 @@ function updateTurrets(dt) {
       }
     }
   }
+}
+
+function updateEnemies(dt) {
+  for (const e of enemies) {
+    if (!e.alive) { e.respawn -= dt; if (e.respawn <= 0) spawnEnemy(e); continue; }
+    const ground = terrainHeight(e.pos.x, e.pos.z);
+    if (started && player.alive) {
+      const to = player.pos.clone().sub(e.pos);
+      const dist = to.length() || 1;
+      const desired = to.clone().multiplyScalar(1 / dist);
+      if (e.pos.y < ground + 140) desired.y += 0.8;   // climb away from terrain
+      if (dist < 350) desired.multiplyScalar(-1);      // peel off if too close
+      desired.normalize();
+      e.dir.lerp(desired, Math.min(dt * 1.2, 1)).normalize();
+      e.cd -= dt;
+      if (player.invuln <= 0 && dist < 2200 && e.dir.dot(to.multiplyScalar(1 / dist)) > 0.9 && e.cd <= 0) {
+        e.cd = 1.1 + Math.random() * 0.8;
+        const d = player.pos.clone().sub(e.pos);
+        d.x += (Math.random() - 0.5) * 70; d.y += (Math.random() - 0.5) * 70; d.z += (Math.random() - 0.5) * 70;
+        spawnShot(e.pos.clone(), d.normalize(), 0xff7733, { hostile: true, dmg: 7, speed: 1300, life: 2.6, kind: 'pac' });
+      }
+    }
+    e.pos.addScaledVector(e.dir, e.speed * dt);
+    if (e.pos.y < ground + 60) e.pos.y = ground + 60;
+    if (e.pos.y > 2500) e.pos.y = 2500;
+    const lim = WORLD / 2 - 200;
+    if (e.pos.x > lim || e.pos.x < -lim) { e.pos.x = THREE.MathUtils.clamp(e.pos.x, -lim, lim); e.dir.x *= -1; }
+    if (e.pos.z > lim || e.pos.z < -lim) { e.pos.z = THREE.MathUtils.clamp(e.pos.z, -lim, lim); e.dir.z *= -1; }
+    e.ship.position.copy(e.pos);
+    e.ship.quaternion.setFromUnitVectors(negZ, e.dir);
+  }
+}
+
+function updateLabels() {
+  for (const r of remotes.values()) {
+    const el = r.label;
+    if (r.dead || !r.hasState) { el.style.display = 'none'; continue; }
+    tmpV.copy(r.ship.position); tmpV.y += 32;
+    tmpV.project(camera);
+    if (tmpV.z > 1) { el.style.display = 'none'; continue; }
+    el.style.display = 'block';
+    el.style.transform = `translate(-50%,-50%) translate(${(tmpV.x * 0.5 + 0.5) * innerWidth}px, ${(-tmpV.y * 0.5 + 0.5) * innerHeight}px)`;
+    el.querySelector('.hpb i').style.width = Math.max(0, r.hp) + '%';
+  }
+}
+
+function updateLock() {
+  if (!started || !player.alive) { lockEl.style.display = 'none'; return; }
+  const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quat);
+  const t = nearestTarget(player.pos, fwd);
+  if (!t) { lockEl.style.display = 'none'; return; }
+  tmpV.copy(targetPos(t)); tmpV.project(camera);
+  if (tmpV.z > 1) { lockEl.style.display = 'none'; return; }
+  lockEl.style.display = 'block';
+  lockEl.style.transform = `translate(-50%,-50%) translate(${(tmpV.x * 0.5 + 0.5) * innerWidth}px, ${(-tmpV.y * 0.5 + 0.5) * innerHeight}px)`;
 }
 
 function updatePickups(dt) {
@@ -726,7 +862,15 @@ function updateShots(dt) {
         if (!t.alive) continue;
         if (distToSegment(t.pos, s.prev, s.mesh.position) < 26) {
           t.hp -= s.dmg; spawnSpark(s.mesh.position, 0xff3344);
-          if (t.hp <= 0) { t.alive = false; t.respawn = 8; t.core.visible = false; spawnExplosion(t.pos, 0xff5533); player.targets++; targetsEl.textContent = 'TARGETS: ' + player.targets; }
+          if (t.hp <= 0) { t.alive = false; t.respawn = 8; t.core.visible = false; spawnExplosion(t.pos, 0xff5533); addTarget(); }
+          dead = true; break;
+        }
+      }
+      if (!dead) for (const e of enemies) {
+        if (!e.alive) continue;
+        if (distToSegment(e.pos, s.prev, s.mesh.position) < 24) {
+          e.hp -= s.dmg; spawnSpark(s.mesh.position, 0xff5533);
+          if (e.hp <= 0) { e.alive = false; e.respawn = 6; e.ship.visible = false; spawnExplosion(e.pos, 0xff5533); addTarget(); }
           dead = true; break;
         }
       }

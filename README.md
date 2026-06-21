@@ -29,6 +29,8 @@ separate pilot. The server relays everyone's position and combat in real time.
 | Shift | Afterburner (very fast, but **weapons go offline** — as in the original) |
 | Left-click / Space | Plasma cannon |
 | Right-click / F | Homing missile (limited ammo) |
+| C | Toggle chase / cockpit camera |
+| M | Mute / unmute audio |
 | Tab | Pilot roster / scoreboard |
 | Esc | Release mouse |
 
@@ -41,7 +43,15 @@ On touch devices a virtual joystick + FIRE / MSL / THR / BOOST buttons appear au
 - **Ground turrets** sit atop the red-cored pylons and shoot back; destroy them for TARGETS.
 - **Pickups**: green octahedra restore shield, orange crates restock missiles.
 - **Altimeter + "PULL UP"** warning when you're skimming the deck.
-- **Homing missiles** lock onto the nearest target ahead of you.
+- **Homing missiles** lock onto the nearest target ahead — a **lock reticle** marks it.
+- **Enemy AI fighters** patrol the sector, chase you, and shoot back; destroy them for TARGETS.
+- **Afterburner is a managed resource** — the BOOST bar drains while boosting and recharges otherwise.
+- **Shield slowly regenerates** when you stay out of fire for a few seconds.
+- **Floating nameplates** (with shield bars) hover over other online pilots.
+- Damage flash, engine trails, and a cockpit/chase camera toggle (C); mute with M.
+
+Enemy fighters, turrets, and pickups are simulated **per-client** (each pilot gets their own
+PvE hazards), layered underneath the shared real-time PvP.
 
 ## How it works
 
