@@ -1,0 +1,13 @@
+{
+  "name": "terminal-velocity-3js",
+  "version": "0.1.0",
+  "description": "Browser remake of the 1995 flight-shooter Terminal Velocity, built with Three.js + WebSocket multiplayer.",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

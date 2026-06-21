@@ -1,0 +1,63 @@
+# Terminal Velocity // 3JS
+
+A browser remake of the 1995 flight-shooter **Terminal Velocity**, built with
+**Three.js** (low-poly "vector" 3D) and **WebSocket online multiplayer**.
+
+Fly a strike fighter over a procedural alien surface, dogfight other pilots in
+real time, and rack up kills.
+
+## Run it
+
+```bash
+npm install
+npm start
+```
+
+Then open **http://localhost:8080**. Enter a callsign, hit **LAUNCH**, and click
+the screen to lock the mouse.
+
+To play multiplayer locally, open the URL in a second tab/browser — each tab is a
+separate pilot. The server relays everyone's position and combat in real time.
+
+## Controls
+
+| Input | Action |
+|-------|--------|
+| Mouse | Steer (pitch / yaw) |
+| W / S | Throttle up / down |
+| A / D | Roll |
+| Shift | Afterburner boost |
+| Left-click / Space | Fire lasers |
+| Esc | Release mouse |
+
+## How it works
+
+- **`server.js`** — Node HTTP server (serves the client) + `ws` WebSocket server.
+  It's an *authoritative-relay* model: it assigns each pilot an id/color and
+  relays `state`, `shot`, `hit`, and `hp` messages between clients. Each client is
+  authoritative over its own hull health.
+- **`public/main.js`** — the game: Three.js scene, procedural flat-shaded terrain,
+  6-DOF flight physics, lasers with client-side hit detection, chase camera, HUD
+  (speed/hull bars, rotating radar, kill feed).
+- **`public/index.html` / `style.css`** — UI shell + retro neon HUD. Three.js is
+  loaded from a CDN via an import map, so there's **no build step**.
+
+## Hosting for real (internet) multiplayer
+
+The server already binds to all interfaces, so to let friends join you only need a
+public address. Options:
+
+1. **Quick tunnel** (no config): `npx localtunnel --port 8080` or
+   `cloudflared tunnel --url http://localhost:8080`, then share the URL.
+2. **Port-forward** TCP `8080` on your router to this PC, share your public IP.
+3. **Cloud host** (Render / Fly.io / Railway): set `PORT` from the env (already
+   supported) and deploy. WebSockets work over the same port; use `wss://` (the
+   client auto-selects `wss` on HTTPS pages).
+
+## Roadmap / ideas
+
+- AI enemy ships and ground turrets (the pylons are wired up as targets already)
+- Server-side hit validation (anti-cheat)
+- Weapon types (missiles, spread), pickups, shields
+- Tunnels / canyons like the original's underground sections
+- Team modes + scoreboard, respawn invulnerability

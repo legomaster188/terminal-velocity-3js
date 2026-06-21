@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TERMINAL VELOCITY // 3JS</title>
+  <link rel="stylesheet" href="style.css" />
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+    }
+  }
+  </script>
+</head>
+<body>
+  <div id="hud">
+    <div id="hud-top">
+      <div id="players">PILOTS ONLINE: 1</div>
+      <div id="status">CONNECTING…</div>
+    </div>
+    <div id="crosshair">+</div>
+    <div id="hud-bottom">
+      <div class="gauge"><span class="label">SPEED</span><div class="bar"><i id="speed-bar"></i></div></div>
+      <div class="gauge"><span class="label">HULL</span><div class="bar"><i id="hull-bar" class="hull"></i></div></div>
+      <div id="kills">KILLS: 0</div>
+    </div>
+    <canvas id="radar" width="140" height="140"></canvas>
+  </div>
+
+  <div id="overlay">
+    <h1>TERMINAL&nbsp;VELOCITY</h1>
+    <p class="sub">3JS MULTIPLAYER REMAKE</p>
+    <label>CALLSIGN <input id="callsign" maxlength="16" value="" placeholder="PILOT" /></label>
+    <button id="launch">LAUNCH</button>
+    <div class="controls">
+      <b>CONTROLS</b><br/>
+      MOUSE — steer &nbsp;·&nbsp; W / S — throttle &nbsp;·&nbsp; A / D — roll<br/>
+      LEFT-CLICK / SPACE — fire &nbsp;·&nbsp; SHIFT — boost &nbsp;·&nbsp; ESC — release mouse
+    </div>
+  </div>
+
+  <div id="killfeed"></div>
+
+  <div id="touch" class="hidden">
+    <div id="stick"><i></i></div>
+    <div id="touch-right">
+      <button id="btn-boost">BOOST</button>
+      <div class="thr">
+        <button id="btn-thrup">THR&nbsp;▲</button>
+        <button id="btn-thrdn">THR&nbsp;▼</button>
+      </div>
+      <button id="btn-fire">FIRE</button>
+    </div>
+  </div>
+
+  <script type="module" src="main.js"></script>
+</body>
+</html>

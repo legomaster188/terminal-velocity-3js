@@ -1,0 +1,59 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: #05060a; }
+body { font-family: "Courier New", monospace; color: #7df9ff; user-select: none; }
+canvas#scene { display: block; }
+
+#hud {
+  position: fixed; inset: 0; pointer-events: none;
+  text-shadow: 0 0 6px currentColor; letter-spacing: 1px;
+}
+#hud-top { position: absolute; top: 14px; left: 0; right: 0; display: flex; justify-content: space-between; padding: 0 18px; font-size: 13px; }
+#status { color: #ffcc33; }
+#crosshair { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 26px; color: #ff5577; opacity: 0.85; }
+#hud-bottom { position: absolute; bottom: 16px; left: 0; right: 0; display: flex; align-items: center; gap: 22px; padding: 0 18px; font-size: 12px; }
+.gauge { display: flex; align-items: center; gap: 8px; }
+.gauge .label { width: 44px; }
+.bar { width: 180px; height: 12px; border: 1px solid #2af; background: rgba(0,40,60,0.4); }
+.bar i { display: block; height: 100%; width: 50%; background: #2af; box-shadow: 0 0 8px #2af; }
+.bar i.hull { background: #66ff88; box-shadow: 0 0 8px #66ff88; }
+#kills { margin-left: auto; color: #ffcc33; }
+#radar { position: absolute; top: 50px; right: 18px; border: 1px solid #2af; background: rgba(0,20,30,0.45); border-radius: 50%; }
+
+#overlay {
+  position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 14px; background: radial-gradient(circle at 50% 40%, rgba(20,40,70,0.85), rgba(5,6,10,0.97));
+  z-index: 10; text-align: center;
+}
+#overlay h1 { font-size: clamp(28px, 7vw, 72px); letter-spacing: 8px; color: #7df9ff; text-shadow: 0 0 18px #2af, 0 0 40px #07f; }
+#overlay .sub { color: #ff5577; letter-spacing: 4px; margin-bottom: 8px; }
+#overlay label { font-size: 14px; color: #9fefff; }
+#overlay input { font-family: inherit; background: #02101a; border: 1px solid #2af; color: #7df9ff; padding: 8px 10px; font-size: 16px; text-align: center; width: 200px; }
+#overlay button { font-family: inherit; cursor: pointer; margin-top: 6px; padding: 12px 40px; font-size: 18px; letter-spacing: 3px; background: #ff5577; color: #05060a; border: none; box-shadow: 0 0 16px #ff5577; }
+#overlay button:hover { background: #ff7799; }
+#overlay .controls { margin-top: 18px; font-size: 12px; line-height: 1.9; color: #6cb; opacity: 0.85; }
+#overlay.hidden { display: none; }
+
+#killfeed { position: fixed; top: 80px; left: 50%; transform: translateX(-50%); z-index: 9; display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 13px; pointer-events: none; }
+#killfeed div { background: rgba(0,0,0,0.4); padding: 2px 10px; animation: fade 4s forwards; }
+@keyframes fade { 0%,70% { opacity: 1; } 100% { opacity: 0; } }
+
+/* Touch controls */
+#touch { position: fixed; inset: 0; z-index: 8; pointer-events: none; touch-action: none; }
+#touch.hidden { display: none; }
+#touch > *, #touch button { pointer-events: auto; }
+#stick {
+  position: absolute; left: 24px; bottom: 28px; width: 150px; height: 150px;
+  border: 2px solid #2af; border-radius: 50%; background: rgba(0,40,60,0.25);
+  display: flex; align-items: center; justify-content: center; touch-action: none;
+}
+#stick i { width: 56px; height: 56px; border-radius: 50%; background: rgba(51,221,255,0.6); box-shadow: 0 0 14px #2af; }
+#touch-right { position: absolute; right: 24px; bottom: 28px; display: flex; align-items: flex-end; gap: 14px; }
+#touch-right .thr { display: flex; flex-direction: column; gap: 10px; }
+#touch button {
+  font-family: "Courier New", monospace; font-size: 15px; letter-spacing: 1px; color: #05060a;
+  border: none; border-radius: 10px; padding: 14px 16px; touch-action: none; -webkit-user-select: none; user-select: none;
+}
+#btn-fire { width: 110px; height: 110px; border-radius: 50%; background: #ff5577; box-shadow: 0 0 16px #ff5577; font-size: 20px; }
+#btn-boost { background: #ffcc33; box-shadow: 0 0 12px #ffcc33; }
+#btn-thrup, #btn-thrdn { background: #33ddff; box-shadow: 0 0 10px #33ddff; }
+#touch button:active { filter: brightness(1.4); }
