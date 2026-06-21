@@ -26,9 +26,22 @@ separate pilot. The server relays everyone's position and combat in real time.
 | Mouse | Steer (pitch / yaw) |
 | W / S | Throttle up / down |
 | A / D | Roll |
-| Shift | Afterburner boost |
-| Left-click / Space | Fire lasers |
+| Shift | Afterburner (very fast, but **weapons go offline** — as in the original) |
+| Left-click / Space | Plasma cannon |
+| Right-click / F | Homing missile (limited ammo) |
+| Tab | Pilot roster / scoreboard |
 | Esc | Release mouse |
+
+On touch devices a virtual joystick + FIRE / MSL / THR / BOOST buttons appear automatically.
+
+## Gameplay
+
+- **Energy shield** (one bar) drains from enemy fire, ground turrets, and crashing into
+  terrain or pylons — at zero you're destroyed and respawn with brief invulnerability.
+- **Ground turrets** sit atop the red-cored pylons and shoot back; destroy them for TARGETS.
+- **Pickups**: green octahedra restore shield, orange crates restock missiles.
+- **Altimeter + "PULL UP"** warning when you're skimming the deck.
+- **Homing missiles** lock onto the nearest target ahead of you.
 
 ## How it works
 

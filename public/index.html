@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>TERMINAL VELOCITY // 3JS</title>
   <link rel="stylesheet" href="style.css" />
   <script type="importmap">
@@ -17,16 +17,23 @@
   <div id="hud">
     <div id="hud-top">
       <div id="players">PILOTS ONLINE: 1</div>
+      <div id="alt">ALT ----</div>
       <div id="status">CONNECTING…</div>
     </div>
     <div id="crosshair">+</div>
+    <div id="warn">▲ PULL UP ▲</div>
+    <div id="boostmsg">AFTERBURNER — WEAPONS OFFLINE</div>
     <div id="hud-bottom">
+      <div class="gauge"><span class="label">SHIELD</span><div class="bar"><i id="shield-bar" class="shield"></i></div></div>
       <div class="gauge"><span class="label">SPEED</span><div class="bar"><i id="speed-bar"></i></div></div>
-      <div class="gauge"><span class="label">HULL</span><div class="bar"><i id="hull-bar" class="hull"></i></div></div>
+      <div id="ammo">MSL: 8</div>
+      <div id="targets">TARGETS: 0</div>
       <div id="kills">KILLS: 0</div>
     </div>
     <canvas id="radar" width="140" height="140"></canvas>
   </div>
+
+  <div id="scoreboard" class="hidden"><h2>PILOT ROSTER</h2><table id="score-table"></table></div>
 
   <div id="overlay">
     <h1>TERMINAL&nbsp;VELOCITY</h1>
@@ -36,7 +43,8 @@
     <div class="controls">
       <b>CONTROLS</b><br/>
       MOUSE — steer &nbsp;·&nbsp; W / S — throttle &nbsp;·&nbsp; A / D — roll<br/>
-      LEFT-CLICK / SPACE — fire &nbsp;·&nbsp; SHIFT — boost &nbsp;·&nbsp; ESC — release mouse
+      LEFT-CLICK / SPACE — cannon &nbsp;·&nbsp; RIGHT-CLICK / F — missile<br/>
+      SHIFT — afterburner (no weapons) &nbsp;·&nbsp; TAB — roster &nbsp;·&nbsp; ESC — release mouse
     </div>
   </div>
 
@@ -50,7 +58,10 @@
         <button id="btn-thrup">THR&nbsp;▲</button>
         <button id="btn-thrdn">THR&nbsp;▼</button>
       </div>
-      <button id="btn-fire">FIRE</button>
+      <div class="thr">
+        <button id="btn-msl">MSL</button>
+        <button id="btn-fire">FIRE</button>
+      </div>
     </div>
   </div>
 

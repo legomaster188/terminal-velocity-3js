@@ -72,7 +72,7 @@ wss.on('connection', (ws) => {
         broadcast({ type: 'state', id, s: m.s }, id);
         break;
       case 'shot':
-        broadcast({ type: 'shot', id, o: m.o, d: m.d }, id);
+        broadcast({ type: 'shot', id, o: m.o, d: m.d, k: m.k }, id);
         break;
       case 'hit': {
         // m.target took damage from this player. Relay to the target who is
