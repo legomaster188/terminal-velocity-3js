@@ -97,6 +97,35 @@ scene.add(sun);
   scene.add(new THREE.Points(g, new THREE.PointsMaterial({ color: 0x99ccff, size: 14, sizeAttenuation: true })));
 }
 
+// Gradient sky dome + sun
+{
+  const skyGeo = new THREE.SphereGeometry(9000, 32, 16);
+  const topC = new THREE.Color(0x0a1130), botC = new THREE.Color(0x2a5a72);
+  const sp = skyGeo.attributes.position, sc = new Float32Array(sp.count * 3);
+  for (let i = 0; i < sp.count; i++) {
+    const t = THREE.MathUtils.clamp(sp.getY(i) / 9000 * 0.6 + 0.4, 0, 1);
+    const c = botC.clone().lerp(topC, t);
+    sc[i*3] = c.r; sc[i*3+1] = c.g; sc[i*3+2] = c.b;
+  }
+  skyGeo.setAttribute('color', new THREE.BufferAttribute(sc, 3));
+  scene.add(new THREE.Mesh(skyGeo, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false, depthWrite: false })));
+  scene.fog.color.setHex(0x1c4256);
+  scene.background = new THREE.Color(0x0a1130);
+
+  const sunDir = new THREE.Vector3(0.5, 0.32, -0.8).normalize();
+  sun.position.copy(sunDir);
+  const sunPos = sunDir.clone().multiplyScalar(7600);
+  const sunMesh = new THREE.Mesh(new THREE.SphereGeometry(280, 20, 20), new THREE.MeshBasicMaterial({ color: 0xffe7b0, fog: false }));
+  sunMesh.position.copy(sunPos); scene.add(sunMesh);
+
+  const cv = document.createElement('canvas'); cv.width = cv.height = 128;
+  const g2 = cv.getContext('2d'); const grd = g2.createRadialGradient(64, 64, 0, 64, 64, 64);
+  grd.addColorStop(0, 'rgba(255,240,200,0.9)'); grd.addColorStop(0.3, 'rgba(255,220,160,0.5)'); grd.addColorStop(1, 'rgba(255,220,160,0)');
+  g2.fillStyle = grd; g2.fillRect(0, 0, 128, 128);
+  const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv), transparent: true, depthWrite: false, fog: false }));
+  glow.scale.setScalar(2600); glow.position.copy(sunPos); scene.add(glow);
+}
+
 // ----------------------------------------------------------------------------
 // Procedural terrain
 // ----------------------------------------------------------------------------
@@ -185,13 +214,17 @@ const player = {
   speed: 260, hp: 100, kills: 0, targets: 0, missiles: 8,
   alive: true, cooldown: 0, mslCd: 0, invuln: 0, hpDirty: false, alarmT: 0, hurtT: 0,
   boost: 100, boosting: false, trailT: 0, lastHitAt: -9999,
-  score: 0, bombs: 3, bombT: 0, spreadT: 0,
+  score: 0, bombs: 3, bombT: 0, spreadT: 0, bank: 0,
 };
 const ship = makeShip(0x33ddff);
 scene.add(ship);
 let myName = 'PILOT';
 let camMode = 0;     // 0 = chase, 1 = cockpit
 let hurtFlash = 0;   // damage vignette intensity
+let shake = 0;       // camera trauma
+let combo = 0, lastKillAt = -9999, streak = 0;   // multi-kill / streak tracking
+const zAxis = new THREE.Vector3(0, 0, 1);
+function addShake(a) { shake = Math.min(1, shake + a); }
 
 // ----------------------------------------------------------------------------
 // Enemy AI fighters (client-local hazards, like turrets)
@@ -208,17 +241,36 @@ function makeEnemy() {
   eye.position.z = -14; g.add(eye);
   return g;
 }
+function makeBoss() {
+  const g = new THREE.Group();
+  g.add(new THREE.Mesh(new THREE.IcosahedronGeometry(34, 0), new THREE.MeshStandardMaterial({ color: 0x882222, flatShading: true, emissive: 0x220000, metalness: 0.4, roughness: 0.5 })));
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(48, 6, 8, 5), new THREE.MeshStandardMaterial({ color: 0x445566, flatShading: true }));
+  ring.rotation.x = Math.PI / 2; g.add(ring);
+  for (const sx of [-1, 1]) {
+    const cannon = new THREE.Mesh(new THREE.CylinderGeometry(4, 4, 36, 6), new THREE.MeshStandardMaterial({ color: 0x222222, flatShading: true }));
+    cannon.rotation.x = Math.PI / 2; cannon.position.set(sx * 30, 0, -10); g.add(cannon);
+  }
+  const eye = new THREE.Mesh(new THREE.SphereGeometry(8, 10, 10), new THREE.MeshBasicMaterial({ color: 0xff3322 }));
+  eye.position.z = -30; g.add(eye);
+  return g;
+}
 function spawnEnemy(e) {
   const x = (Math.random() - 0.5) * WORLD * 0.7, z = (Math.random() - 0.5) * WORLD * 0.7;
   e.pos.set(x, terrainHeight(x, z) + 400 + Math.random() * 400, z);
   e.dir.set(Math.random() - 0.5, 0, Math.random() - 0.5).normalize();
-  e.hp = 24; e.alive = true; e.cd = 1 + Math.random() * 2; e.ship.visible = true;
+  e.hp = e.maxHp; e.alive = true; e.cd = 1 + Math.random() * 2; e.ship.visible = true;
 }
 for (let i = 0; i < 5; i++) {
   const eship = makeEnemy();
   scene.add(eship);
-  const e = { ship: eship, pos: new THREE.Vector3(), dir: new THREE.Vector3(0, 0, -1), hp: 24, cd: 2, alive: true, respawn: 0, speed: 300 };
+  const e = { ship: eship, pos: new THREE.Vector3(), dir: new THREE.Vector3(0, 0, -1), hp: 24, maxHp: 24, cd: 2, alive: true, respawn: 0, speed: 300, boss: false };
   spawnEnemy(e); enemies.push(e);
+}
+{
+  const bship = makeBoss();
+  scene.add(bship);
+  const b = { ship: bship, pos: new THREE.Vector3(), dir: new THREE.Vector3(0, 0, -1), hp: 320, maxHp: 320, cd: 3, alive: true, respawn: 0, speed: 175, boss: true };
+  spawnEnemy(b); enemies.push(b);
 }
 
 const camOffset = new THREE.Vector3(0, 22, 90);
@@ -353,6 +405,7 @@ function spawnTrail(pos, colorHex) {
 }
 function spawnExplosion(pos, colorHex) {
   Audio.boom();
+  addShake(THREE.MathUtils.clamp(1 - pos.distanceTo(player.pos) / 1600, 0, 1) * 0.5);
   for (let i = 0; i < 16; i++) {
     const m = new THREE.Mesh(sparkGeo, new THREE.MeshBasicMaterial({ color: i % 3 ? colorHex : 0xffcc33, transparent: true }));
     m.position.copy(pos); m.scale.setScalar(1 + Math.random() * 2);
@@ -457,7 +510,19 @@ function handle(m) {
       if (m.hp <= 0) {
         scores.set(m.by, (scores.get(m.by) || 0) + 1);
         const who = remotes.get(m.id);
-        if (m.by === myId) { player.kills = scores.get(myId); document.getElementById('kills').textContent = `KILLS: ${player.kills}`; addScore(100); feed(`YOU destroyed ${who ? who.name : 'a pilot'}`); }
+        if (m.by === myId) {
+          player.kills = scores.get(myId);
+          document.getElementById('kills').textContent = `KILLS: ${player.kills}`;
+          addScore(100); streak++;
+          combo = (tNow - lastKillAt < 4000) ? combo + 1 : 1;
+          lastKillAt = tNow;
+          if (combo >= 5) callout('RAMPAGE ×' + combo, '#ff3344');
+          else if (combo === 4) callout('MULTI KILL', '#ffcc33');
+          else if (combo === 3) callout('TRIPLE KILL', '#ffcc33');
+          else if (combo === 2) callout('DOUBLE KILL', '#ffcc33');
+          if (who) popup('+100', who.ship.position, '#ffcc33');
+          feed(`YOU destroyed ${who ? who.name : 'a pilot'}`);
+        }
         else feed(`${who ? who.name : 'A pilot'} was destroyed`);
       }
       break;
@@ -482,11 +547,12 @@ function applyDamage(dmg, from) {
   lastDamageBy = from;
   player.lastHitAt = tNow;
   hurtFlash = Math.min(1, hurtFlash + 0.5);
-  if (player.hurtT <= 0) { spawnSpark(player.pos, 0xff5577); Audio.alarm(); player.hurtT = 0.15; } // throttle continuous-graze feedback
+  if (player.hurtT <= 0) { spawnSpark(player.pos, 0xff5577); Audio.alarm(); addShake(0.3); player.hurtT = 0.15; } // throttle continuous-graze feedback
   if (player.hp <= 0) {
     player.hp = 0; player.alive = false;
+    combo = 0; streak = 0;
     send({ type: 'hp', hp: 0, by: from });
-    spawnExplosion(player.pos, 0x33ddff);
+    spawnExplosion(player.pos, 0x33ddff); addShake(1);
     ship.visible = false;
     feed('YOU WERE DESTROYED');
     setTimeout(respawn, 2200);
@@ -530,10 +596,10 @@ function smartBomb() {
   player.bombs--; player.bombT = 0.8;
   bombsEl.textContent = 'BOMB: ' + player.bombs;
   spawnExplosion(player.pos, 0x66ccff); spawnExplosion(player.pos, 0xffffff);
-  Audio.boom();
+  addShake(0.9); Audio.boom();
   const R = 1300;
-  for (const t of turrets) if (t.alive && t.pos.distanceTo(player.pos) < R) { t.alive = false; t.respawn = 8; t.core.visible = false; spawnExplosion(t.pos, 0xff5533); addTarget(); }
-  for (const e of enemies) if (e.alive && e.pos.distanceTo(player.pos) < R) { e.alive = false; e.respawn = 6; e.ship.visible = false; spawnExplosion(e.pos, 0xff5533); addTarget(); }
+  for (const t of turrets) if (t.alive && t.pos.distanceTo(player.pos) < R) { t.alive = false; t.respawn = 8; t.core.visible = false; spawnExplosion(t.pos, 0xff5533); addTarget(); popup('+25', t.pos, '#ff8888'); }
+  for (const e of enemies) if (e.alive && e.pos.distanceTo(player.pos) < R) { e.hp -= 150; if (e.hp <= 0) killEnemy(e); else spawnSpark(e.pos, 0xff5533); }
   for (const [id, r] of remotes) if (!r.dead && r.hp > 0 && r.ship.position.distanceTo(player.pos) < R) { send({ type: 'hit', target: id, dmg: 45 }); spawnExplosion(r.ship.position, r.color); }
   hitMark = 1;
 }
@@ -626,7 +692,34 @@ const lockEl = document.getElementById('lock');
 const bombsEl = document.getElementById('bombs');
 const scoreEl = document.getElementById('score');
 const hitmarkEl = document.getElementById('hitmark');
+const calloutEl = document.getElementById('callout');
+const popupsEl = document.getElementById('popups');
+const bossbarEl = document.getElementById('bossbar');
+const bossHpEl = document.getElementById('boss-hp');
 let hitMark = 0;
+let calloutT = 0;
+
+function callout(text, color) { calloutEl.textContent = text; calloutEl.style.color = color || '#ffcc33'; calloutT = 1.8; }
+
+const popups = [];
+function popup(text, worldPos, color) {
+  const d = document.createElement('div');
+  d.className = 'popup'; d.textContent = text; d.style.color = color || '#fff';
+  popupsEl.appendChild(d);
+  popups.push({ el: d, pos: worldPos.clone(), life: 1.2, max: 1.2 });
+}
+
+function killEnemy(e) {
+  e.alive = false; e.respawn = e.boss ? 25 : 6; e.ship.visible = false;
+  spawnExplosion(e.pos, 0xff5533);
+  if (e.boss) {
+    spawnExplosion(e.pos, 0xffcc33); addShake(0.9);
+    player.targets++; targetsEl.textContent = 'TARGETS: ' + player.targets; addScore(500);
+    callout('GUNSHIP DESTROYED', '#ff5577'); popup('+500', e.pos, '#ffcc33');
+  } else {
+    addTarget(); popup('+25', e.pos, '#cc88ff');
+  }
+}
 
 const RANKS = [[0, 'RECRUIT'], [200, 'PILOT'], [500, 'ACE'], [1000, 'VETERAN'], [2000, 'VANGUARD'], [4000, 'LEGEND']];
 function rankFor(s) { let r = RANKS[0][1]; for (const [t, n] of RANKS) if (s >= t) r = n; return r; }
@@ -650,7 +743,7 @@ function drawRadar() {
     radar.fillStyle = color; radar.beginPath(); radar.arc(cx + rx, cy + rz, size, 0, 7); radar.fill();
   };
   for (const t of turrets) if (t.alive) plot(t.pos.x, t.pos.z, '#ff3344', 2);
-  for (const e of enemies) if (e.alive) plot(e.pos.x, e.pos.z, '#ff7733', 2);
+  for (const e of enemies) if (e.alive) plot(e.pos.x, e.pos.z, e.boss ? '#ff2222' : '#ff7733', e.boss ? 4 : 2);
   for (const p of pickups) plot(p.mesh.position.x, p.mesh.position.z, p.kind === 'shield' ? '#66ff88' : p.kind === 'ammo' ? '#ff9944' : '#cc66ff', 2);
   for (const r of remotes.values()) if (!r.dead) plot(r.ship.position.x, r.ship.position.z, '#' + r.color.toString(16).padStart(6, '0'), 3);
   radar.fillStyle = '#7df9ff';
@@ -681,6 +774,14 @@ function tick(now) {
   hurtEl.style.opacity = hurtFlash.toFixed(3);
   hitMark = Math.max(0, hitMark - dt * 3);
   hitmarkEl.style.opacity = hitMark.toFixed(3);
+  shake = Math.max(0, shake - dt * 1.6);
+  if (calloutT > 0) {
+    calloutT -= dt;
+    calloutEl.style.opacity = Math.min(1, calloutT * 2);
+    calloutEl.style.transform = `translate(-50%,-50%) scale(${1 + Math.max(0, calloutT - 1.5) * 1.4})`;
+  } else calloutEl.style.opacity = 0;
+  updatePopups(dt);
+  updateBossBar();
 
   netAccum += dt;
   if (started && netAccum >= 0.05) {
@@ -777,9 +878,12 @@ function updateFlight(dt) {
     spawnTrail(new THREE.Vector3(0, 0, 18).applyQuaternion(player.quat).add(player.pos), boosting ? 0xffcc33 : 0x66ccff);
   }
 
-  // Ship mesh + invuln blink
+  // Ship mesh + visual banking into turns + invuln blink
   ship.position.copy(player.pos);
   ship.quaternion.copy(player.quat);
+  const targetBank = -yawInput * 0.7;
+  player.bank += (targetBank - player.bank) * Math.min(dt * 6, 1);
+  ship.quaternion.multiply(tmpQ.setFromAxisAngle(zAxis, player.bank));
   ship.visible = camMode === 1 ? false : (player.invuln > 0 ? (Math.floor(tNow / 100) % 2 === 0) : true);
   ship.userData.glow.scale.setScalar(0.6 + (player.speed / 700) + (boosting ? 0.6 : 0));
 
@@ -788,6 +892,13 @@ function updateFlight(dt) {
   camera.position.lerp(tmpV, Math.min(dt * (camMode === 1 ? 12 : 6), 1));
   tmpQ.copy(player.quat);
   camera.quaternion.slerp(tmpQ, Math.min(dt * 6, 1));
+  if (shake > 0.001) {
+    const a = shake * shake;
+    camera.position.x += (Math.random() - 0.5) * a * 14;
+    camera.position.y += (Math.random() - 0.5) * a * 14;
+    camera.position.z += (Math.random() - 0.5) * a * 14;
+    camera.rotateZ((Math.random() - 0.5) * a * 0.05);
+  }
 
   // Speed-driven FOV kick + engine drone
   const sNorm = THREE.MathUtils.clamp((player.speed - 150) / 610, 0, 1);
@@ -832,22 +943,24 @@ function updateEnemies(dt) {
     if (started && player.alive) {
       const to = player.pos.clone().sub(e.pos);
       const dist = to.length() || 1;
-      if (player.invuln <= 0 && dist < 40) { // ramming
-        applyDamage(25, 0);
-        e.alive = false; e.respawn = 6; e.ship.visible = false; spawnExplosion(e.pos, 0xff5533);
-        continue;
+      if (player.invuln <= 0 && dist < (e.boss ? 60 : 40)) { // ramming
+        if (e.boss) { applyDamage(70 * dt, 0); }            // boss: continuous contact damage
+        else { applyDamage(25, 0); killEnemy(e); continue; } // fighter: one-shot, dies
       }
       const desired = to.clone().multiplyScalar(1 / dist);
       if (e.pos.y < ground + 140) desired.y += 0.8;   // climb away from terrain
       if (dist < 350) desired.multiplyScalar(-1);      // peel off if too close
       desired.normalize();
-      e.dir.lerp(desired, Math.min(dt * 1.2, 1)).normalize();
+      e.dir.lerp(desired, Math.min(dt * (e.boss ? 0.7 : 1.2), 1)).normalize();
       e.cd -= dt;
-      if (player.invuln <= 0 && dist < 2200 && e.dir.dot(to.multiplyScalar(1 / dist)) > 0.9 && e.cd <= 0) {
-        e.cd = 1.1 + Math.random() * 0.8;
-        const d = player.pos.clone().sub(e.pos);
-        d.x += (Math.random() - 0.5) * 70; d.y += (Math.random() - 0.5) * 70; d.z += (Math.random() - 0.5) * 70;
-        spawnShot(e.pos.clone(), d.normalize(), 0xff7733, { hostile: true, dmg: 7, speed: 1300, life: 2.6, kind: 'pac' });
+      if (player.invuln <= 0 && dist < (e.boss ? 2600 : 2200) && e.dir.dot(to.multiplyScalar(1 / dist)) > (e.boss ? 0.8 : 0.9) && e.cd <= 0) {
+        e.cd = e.boss ? 1.7 : 1.1 + Math.random() * 0.8;
+        for (let k = 0; k < (e.boss ? 3 : 1); k++) {
+          const d = player.pos.clone().sub(e.pos);
+          const spread = e.boss ? 130 : 70;
+          d.x += (Math.random() - 0.5) * spread; d.y += (Math.random() - 0.5) * spread; d.z += (Math.random() - 0.5) * spread;
+          spawnShot(e.pos.clone(), d.normalize(), e.boss ? 0xff3322 : 0xff7733, { hostile: true, dmg: e.boss ? 10 : 7, speed: e.boss ? 1200 : 1300, life: e.boss ? 3 : 2.6, kind: 'pac' });
+        }
       }
     }
     e.pos.addScaledVector(e.dir, e.speed * dt);
@@ -872,6 +985,27 @@ function updateLabels() {
     el.style.transform = `translate(-50%,-50%) translate(${(tmpV.x * 0.5 + 0.5) * innerWidth}px, ${(-tmpV.y * 0.5 + 0.5) * innerHeight}px)`;
     el.querySelector('.hpb i').style.width = Math.max(0, r.hp) + '%';
   }
+}
+
+function updatePopups(dt) {
+  for (let i = popups.length - 1; i >= 0; i--) {
+    const p = popups[i];
+    p.life -= dt;
+    if (p.life <= 0) { p.el.remove(); popups.splice(i, 1); continue; }
+    tmpV.copy(p.pos); tmpV.project(camera);
+    if (tmpV.z > 1) { p.el.style.display = 'none'; continue; }
+    p.el.style.display = 'block';
+    p.el.style.opacity = Math.max(0, p.life / p.max);
+    p.el.style.transform = `translate(-50%,-50%) translate(${(tmpV.x * 0.5 + 0.5) * innerWidth}px, ${(-tmpV.y * 0.5 + 0.5) * innerHeight - (p.max - p.life) * 42}px)`;
+  }
+}
+
+function updateBossBar() {
+  const boss = enemies.find(e => e.boss);
+  if (boss && boss.alive && started && boss.pos.distanceTo(player.pos) < 3200) {
+    bossbarEl.classList.remove('hidden');
+    bossHpEl.style.width = Math.max(0, boss.hp / boss.maxHp * 100) + '%';
+  } else bossbarEl.classList.add('hidden');
 }
 
 function updateLock() {
@@ -928,15 +1062,15 @@ function updateShots(dt) {
         if (!t.alive) continue;
         if (distToSegment(t.pos, s.prev, s.mesh.position) < 26) {
           t.hp -= s.dmg; spawnSpark(s.mesh.position, 0xff3344); hitMark = 1;
-          if (t.hp <= 0) { t.alive = false; t.respawn = 8; t.core.visible = false; spawnExplosion(t.pos, 0xff5533); addTarget(); }
+          if (t.hp <= 0) { t.alive = false; t.respawn = 8; t.core.visible = false; spawnExplosion(t.pos, 0xff5533); addTarget(); popup('+25', t.pos, '#ff8888'); }
           dead = true; break;
         }
       }
       if (!dead) for (const e of enemies) {
         if (!e.alive) continue;
-        if (distToSegment(e.pos, s.prev, s.mesh.position) < 24) {
+        if (distToSegment(e.pos, s.prev, s.mesh.position) < (e.boss ? 36 : 24)) {
           e.hp -= s.dmg; spawnSpark(s.mesh.position, 0xff5533); hitMark = 1;
-          if (e.hp <= 0) { e.alive = false; e.respawn = 6; e.ship.visible = false; spawnExplosion(e.pos, 0xff5533); addTarget(); }
+          if (e.hp <= 0) killEnemy(e);
           dead = true; break;
         }
       }

@@ -29,6 +29,13 @@ canvas#scene { display: block; }
 #kills { margin-left: auto; color: #ffcc33; }
 #score { color: #7df9ff; }
 #hitmark { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 24px; color: #fff; opacity: 0; pointer-events: none; }
+#callout { position: absolute; top: 30%; left: 50%; transform: translate(-50%, -50%); font-size: 40px; font-weight: bold; letter-spacing: 4px; color: #ffcc33; text-shadow: 0 0 16px currentColor; opacity: 0; pointer-events: none; white-space: nowrap; }
+#bossbar { position: absolute; top: 44px; left: 50%; transform: translateX(-50%); text-align: center; color: #ff5577; font-size: 13px; letter-spacing: 3px; }
+#bossbar.hidden { display: none; }
+#bossbar .bbar { width: 300px; height: 9px; border: 1px solid #ff5577; background: rgba(40,0,10,0.5); margin-top: 3px; }
+#bossbar .bbar i { display: block; height: 100%; width: 100%; background: #ff5577; box-shadow: 0 0 8px #ff5577; }
+#popups { position: fixed; inset: 0; pointer-events: none; z-index: 6; overflow: hidden; }
+.popup { position: absolute; top: 0; left: 0; transform: translate(-50%, -50%); font-family: "Courier New", monospace; font-size: 16px; font-weight: bold; text-shadow: 0 0 5px #000; white-space: nowrap; }
 
 #scoreboard {
   position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 9;

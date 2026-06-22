@@ -55,6 +55,10 @@ On touch devices a virtual joystick + FIRE / MSL / THR / BOOST buttons appear au
 - **Spread-cannon pickup** (purple) temporarily gives a triple-shot cannon and a spare bomb.
 - **Score + rank** progression (RECRUIT → LEGEND), shown in the HUD.
 - **Speed FOV kick**, hit markers, enemy ramming, and a throttle-pitched engine drone.
+- **Boss gunship** — a heavily-armoured enemy with its own health bar; worth +500.
+- **Multi-kill callouts** (DOUBLE KILL → RAMPAGE) and floating score popups.
+- **Screen shake** on explosions/bombs/hits, **visual banking** into turns,
+  and a **gradient sky with a sun**.
 
 Enemy fighters, turrets, and pickups are simulated **per-client** (each pilot gets their own
 PvE hazards), layered underneath the shared real-time PvP.
